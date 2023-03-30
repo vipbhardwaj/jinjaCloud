@@ -21,7 +21,7 @@ UBER_USER = os.environ.get('UBER_USER') or ""
 UBER_PASS = os.environ.get('UBER_PASS') or ""
 
 JOBS = {}
-HOST = '172.23.98.63'
+HOST = '172.23.136.115'
 DEFAULT_BUCKET_STORAGE = "COUCHSTORE"
 DEFAULT_GSI_TYPE = "PLASMA"
 DEFAULT_ARCHITECTURE = "x86_64"
@@ -32,6 +32,7 @@ config.read("credentials.ini")
 
 if len(sys.argv) == 2:
     HOST = sys.argv[1]
+
 
 def get_auth(server):
     auth = None
@@ -47,18 +48,20 @@ def get_auth(server):
                 break
     return auth
 
+
 def getJS(url, params=None, retry=5, append_api_json=True):
     res = None
     auth = get_auth(url)
     try:
         if append_api_json:
-            res = requests.get("%s/%s" % (url, "api/json"), params=params, timeout=15, auth=auth)
+            res = requests.get("{0}/{1}".format(url, "api/json"), params=params, timeout=15, auth=auth)
         else:
-            res = requests.get("%s" % url, params=params, timeout=15, auth=auth)
+            res = requests.get("{0}".format(url), params=params, timeout=15, auth=auth)
         data = res.json()
         return data
-    except:
-        print("[Error] url unreachable: %s" % url)
+    except Exception as e:
+        print("[Error] url unreachable: %s/api/json" % url)
+        print(e)
         res = None
         if retry:
             retry = retry - 1
@@ -72,14 +75,14 @@ def getJS(url, params=None, retry=5, append_api_json=True):
 def getConsoleLog(url):
     res = None
     try:
-        res =  requests.get("%s/%s" % (url, "consoleText"), timeout=15)
-        if res.status_code == 200:
-            return res.content
-    except ex:
-        print("[Error] url unreachable: %s" % url)
-        print("Error: %s" % ex.message)
+        res = requests.get("{0}/{1}".format(url, "consoleText"), timeout=15)
+        return res.content
+    except Exception as e:
+        print("[Error] url unreachable: %s/consoleText" % url)
+        print(e)
 
     return res
+
 
 def getAction(actions, key, value=None):
     if actions is None:
@@ -111,14 +114,16 @@ def getAction(actions, key, value=None):
 
     return obj
 
+
 def build_finished(res):
     if res is None or "result" not in res or "building" not in res:
         return False
 
     if res["result"] not in ["SUCCESS", "UNSTABLE", "FAILURE", "ABORTED"] or res["building"]:
         return False
-    
+
     return True
+
 
 def getBuildAndPriority(params, build_param_names):
     build = None
@@ -176,10 +181,12 @@ def processBuildValue(build):
 
     return build
 
+
 def format_stack_trace(raw_stack_trace, character_limit=1000):
     # remove non ASCII characters
     stack = re.sub(r'[^ -~]+', '', raw_stack_trace.replace("\\n", "")).lstrip("['Traceback (most recent call last):  ")
     return (stack[:character_limit] + '...') if len(stack) > character_limit else stack
+
 
 def get_servers_from_log(job_url):
     ips = set()
@@ -187,7 +194,8 @@ def get_servers_from_log(job_url):
         auth = get_auth(job_url)
         timeout = 5
         start_download_time = time.time()
-        for line in requests.get(job_url + '/consoleText', timeout=timeout, stream=True, auth=auth).iter_lines():
+        for line in requests.get(job_url + '/consoleText', timeout=timeout, stream=True,
+                                 auth=auth).iter_lines(decode_unicode=True):
             if time.time() > start_download_time + timeout:
                 raise Exception("download timeout")
             # install.py
@@ -202,9 +210,10 @@ def get_servers_from_log(job_url):
                     ips.add(line.split(" ")[-1].strip())
                 except Exception:
                     pass
-    except Exception:
-        print("error downloading console ({})".format(job_url))
+    except Exception as e:
+        print("error downloading console for job: ({}), Error: ".format(job_url, e))
     return list(ips)
+
 
 def get_claim_from_log(job_url):
     reasons = set()
@@ -212,7 +221,8 @@ def get_claim_from_log(job_url):
         auth = get_auth(job_url)
         timeout = 5
         start_download_time = time.time()
-        for line in requests.get(job_url + '/consoleText', timeout=5, stream=True, auth=auth).iter_lines(decode_unicode=True):
+        for line in requests.get(job_url + '/consoleText', timeout=5, stream=True, auth=auth).iter_lines(
+                decode_unicode=True):
             line = format_stack_trace(line)
             if time.time() > start_download_time + timeout:
                 raise Exception("download timeout")
@@ -222,15 +232,17 @@ def get_claim_from_log(job_url):
                     break
                 for cause in causes:
                     if cause in line:
-                        reasons.add (claim + ": " + line)
+                        reasons.add(claim + ": " + line)
                         found = True
                         break
-    except Exception:
+    except Exception as e:
         print("error downloading console ({})".format(job_url))
+        print(e)
     if len(reasons) == 0:
         return None
     else:
         return "<br><br>".join(reasons)
+
 
 # Get all exceptions
 def get_claim_from_test_report(job_url):
@@ -240,7 +252,8 @@ def get_claim_from_test_report(job_url):
         start_download_time = time.time()
         timeout = 5
         json_str = ""
-        for char in requests.get(job_url + "/testReport/api/json", timeout=timeout, auth=auth, stream=True).iter_content(decode_unicode=True):
+        for char in requests.get(job_url + "/testReport/api/json", timeout=timeout, auth=auth,
+                                 stream=True).iter_content(decode_unicode=True):
             if time.time() > start_download_time + timeout:
                 raise Exception("download timeout")
             json_str += char
@@ -268,6 +281,7 @@ def get_claim_from_test_report(job_url):
     else:
         return "<br><br>".join(reasons)
 
+
 def getClaimReason(actions, analyse_log, analyse_test_report, job_url):
     reason = None
 
@@ -275,7 +289,7 @@ def getClaimReason(actions, analyse_log, analyse_test_report, job_url):
         reason = getAction(actions, "reason")
         try:
             rep_dict = {m: "<a href=\"https://issues.couchbase.com/browse/{0}\">{1}</a>".
-                format(m, m) for m in re.findall(r"([A-Z]{2,4}[-: ]*\d{4,5})", reason)}
+            format(m, m) for m in re.findall(r"([A-Z]{2,4}[-: ]*\d{4,5})", reason)}
             if rep_dict:
                 pattern = re.compile('|'.join(rep_dict.keys()))
                 reason = pattern.sub(lambda x: rep_dict[x.group()], reason)
@@ -323,13 +337,13 @@ def caveat_should_skip_backup_recovery(doc):
 
 def caveat_should_skip(doc):
     return caveat_should_skip_win(doc) or \
-           caveat_should_skip_backup_recovery(doc)
+        caveat_should_skip_backup_recovery(doc)
 
 
 def caveat_should_skip_mobile(doc):
     # skip mobile component loading for non cen os
     return (doc["component"].find("MOBILE") > -1) and \
-           (doc["os"].find("CEN") == -1)
+        (doc["os"].find("CEN") == -1)
 
 
 def isExecutor(name):
@@ -372,14 +386,17 @@ def purgeDisabled(job, bucket):
         except Exception as ex:
             pass  # delete ok
 
+
 def get_expected_total_count(greenboard_bucket, bucket, doc):
     expected_total_count = None
     name = doc.get("displayName") or doc["name"]
     try:
-        expected_total_count = int(greenboard_bucket.lookup_in("existing_builds_"+bucket, SD.get(bucket+"."+doc["os"]+"."+doc["component"]+"."+name+".totalCount"))[0])
+        expected_total_count = int(greenboard_bucket.lookup_in("existing_builds_" + bucket, SD.get(
+            bucket + "." + doc["os"] + "." + doc["component"] + "." + name + ".totalCount"))[0])
     except Exception:
         pass
     return expected_total_count
+
 
 def update_skip_count(greenboard_bucket, view, doc):
     # if job failed or was aborted, get the expected total count and set skip count to expected total count - actual total count
@@ -389,6 +406,7 @@ def update_skip_count(greenboard_bucket, view, doc):
         if expected_total_count is not None and expected_total_count > doc["totalCount"]:
             doc["skipCount"] = expected_total_count - doc["totalCount"]
             doc["totalCount"] = expected_total_count
+
 
 def get_manual_triage_and_bugs(triage_history_bucket, bucket, doc):
     triage = ""
@@ -408,12 +426,14 @@ def get_manual_triage_and_bugs(triage_history_bucket, bucket, doc):
 
     return triage, bugs
 
+
 def get_servers_from_params(params):
     servers = getAction(params, "name", "servers")
     if servers is None:
         return []
     else:
         return [server.strip("\"") for server in servers.split(",")]
+
 
 def get_servers(params, job_url):
     return get_servers_from_params(params) or get_servers_from_log(job_url)
@@ -456,12 +476,294 @@ def get_variants(params, component):
 
 def add_variants_to_name(doc):
     """
-    Add the variants to the name of the job. 
+    Add the variants to the name of the job.
     Store the original name in displayName to show on greenboard
     """
     doc["displayName"] = doc["name"]
     for key, value in doc["variants"].items():
         doc["name"] += key + "=" + value
+
+
+def get_build_from_image(params, images):
+    build = None
+    for img_param_name in images:
+        if getAction(params, "name", img_param_name):
+            image = getAction(params, "name", img_param_name)
+            build = image.split()[3] + '-' + image.split()[4]
+            break
+    return build
+
+
+def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
+    try:
+        jobDoc, view, already_scraped = input
+        print(jobDoc["name"])
+        bucket = view["bucket"]
+
+        claimedBuilds = claimedBuilds or {}
+        cluster = newClient()
+        client = cluster.bucket(bucket).default_collection()
+        greenboard_bucket = cluster.bucket("greenboard").default_collection()
+        triage_history_bucket = cluster.bucket("triage_history").default_collection()
+
+        doc = copy.deepcopy(jobDoc)
+        url = doc["url"]
+
+        if url.find("qe-jenkins1.sc.couchbase.com/") > -1:
+            url = url.replace("qe-jenkins1.sc.couchbase.com/", "qe-jenkins.sc.couchbase.com/view/Cloud/")
+
+        res = getJS(url, {"depth": 0})
+
+        if res is None:
+            return
+
+        # do not process disabled jobs
+        if isDisabled(doc):
+            purgeDisabled(res, bucket)
+            return
+
+        # operate as 2nd pass if test_executor
+        if isExecutor(doc["name"]):
+            first_pass = False
+
+        buildHist = {}
+        if res.get("lastBuild") is not None:
+
+            bids = [b["number"] for b in res["builds"]]
+
+            if isExecutor(doc["name"]):
+                # include all jenkins history
+                bids = list(range(res["firstBuild"]["number"], res["lastBuild"]["number"] + 1))
+                bids.reverse()
+            elif first_pass:
+                bids.reverse()  # bottom to top 1st pass
+
+            for bid in bids:
+                try:
+                    doc = copy.deepcopy(jobDoc)
+                    oldName = JOBS.get(doc["name"]) is not None
+                    if oldName and bid in JOBS[doc["name"]]:
+                        continue  # job already stored
+                    else:
+                        if oldName and first_pass is False:
+                            JOBS[doc["name"]].append(bid)
+
+                    doc["build_id"] = bid
+
+                    already_scraped_key = doc["url"] + str(doc["build_id"])
+
+                    if already_scraped_key in already_scraped:
+                        continue
+
+                    should_process = False
+
+                    for _ in range(2):
+                        res = getJS(url + str(bid), {"depth": 0})
+                        if not build_finished(res):
+                            break
+                        # retry after 10 seconds if jenkins race condition where result and duration have not
+                        # been updated to reflect test results
+                        # e.g. result set to success, test result processed, result updated, duration updated.
+                        if res["duration"] == 0:
+                            print("Sleeping for 10 seconds, potential Jenkins race condition detected...")
+                            time.sleep(10)
+                        else:
+                            should_process = True
+                            break
+
+                    if not should_process:
+                        continue
+
+                    doc["result"] = res["result"]
+                    doc["duration"] = res["duration"]
+                    doc["timestamp"] = res["timestamp"]
+
+                    actions = res["actions"]
+                    params = getAction(actions, "parameters")
+                    if skipCollect(params):
+                        continue
+
+                    if skipServerCollect(params):
+                        continue
+
+                    totalCount = getAction(actions, "totalCount") or 0
+                    failCount = getAction(actions, "failCount") or 0
+                    skipCount = getAction(actions, "skipCount") or 0
+                    # failed or no tests passed
+                    should_analyse_logs = res["result"] != "SUCCESS"
+                    # at least one test executed
+                    should_analyse_report = totalCount > 0 and res["result"] != "SUCCESS"
+                    if totalCount == 0:
+                        if not isExecutor(doc["name"]):
+                            # skip non executor jobs where totalCount == 0 and no lastTotalCount
+                            if lastTotalCount == -1:
+                                continue
+                            else:
+                                # only set totalCount to lastTotalCount if this is not an executor job
+                                # if this is an executor job, the last run will probably be a completely
+                                # different set of tests so lastTotalCount is irrelevant
+                                totalCount = lastTotalCount
+                                failCount = totalCount
+                    else:
+                        lastTotalCount = totalCount
+
+                    doc["failCount"] = failCount
+                    doc["totalCount"] = totalCount - skipCount
+                    doc["skipCount"] = 0
+                    if params is None:
+                        # possibly new api
+                        if 'keys' not in dir(actions) and len(actions) > 0:
+                            # actions is not a dict and has data
+                            # then use the first object that is a list
+                            for a in actions:
+                                if 'keys' not in dir(a):
+                                    params = a
+
+                    componentParam = getAction(params, "name", "component")
+                    if componentParam is None:
+                        testYml = getAction(params, "name", "test")
+                        if testYml and testYml.find(".yml"):
+                            testFile = testYml.split(" ")[1]
+                            componentParam = "systest-" + str(os.path.split(testFile)[-1]).replace(".yml", "")
+
+                    if componentParam:
+                        subComponentParam = getAction(params, "name", "subcomponent")
+                        if subComponentParam is None:
+                            subComponentParam = "server"
+                        osParam = getAction(params, "name", "OS") or getAction(params, "name", "os")
+                        if osParam is None:
+                            osParam = doc["os"]
+                        if not componentParam or not subComponentParam or not osParam:
+                            continue
+
+                        architecture = getAction(params, "name", "arch")
+                        if architecture and architecture != DEFAULT_ARCHITECTURE:
+                            osParam += "-" + architecture
+
+                        pseudoName = str(osParam + "-" + componentParam + "_" + subComponentParam)
+                        doc["name"] = pseudoName
+
+                        _os, _comp = getOsComponent(pseudoName, view)
+                        if _os and _comp:
+                            doc["os"] = _os
+                            doc["component"] = _comp
+                        if not doc.get("os") or not doc.get("component"):
+                            continue
+
+                    # replace os with server type if it exists and is not the default
+                    server_type = getAction(params, "name", "server_type")
+                    if server_type and server_type != DEFAULT_SERVER_TYPE:
+                        doc["os"] = server_type
+                    elif "SERVERLESS" in doc["name"].upper():
+                        doc["os"] = "SERVERLESS_ONCLOUD"
+                    else:
+                        doc["os"] = "PROVISIONED_ONCLOUD"
+
+                    # based on the `os` type, setting respective parameters for the current doc
+                    if doc["os"] == "SERVERLESS_ONCLOUD":
+                        dapi_img = getAction(params, "name", "dapi_image")
+                        if dapi_img:
+                            doc["dapi_img"] = dapi_img
+                        dni = getAction(params, "name", "nebulaImage")
+                        if dni:
+                            doc["dni"] = dni
+                    else:
+                        provider = getAction(params, "name", "provider")
+                        if provider:
+                            doc["provider"] = provider
+
+                    # setting component from suite_type if component is None
+                    if not doc.get("component"):
+                        suite_type = getAction(params, "name", "suite_type")
+                        if suite_type:
+                            doc["component"] = suite_type
+
+                    doc["servers"] = get_servers(params, url + str(bid))
+
+                    doc["build"], doc["priority"] = getBuildAndPriority(params, view["build_param_name"])
+
+                    if not doc.get("build"):
+                        doc["build"] = get_build_from_image(params, view["image_param_name"])
+                        if not doc.get("build"):
+                            continue
+
+                    # run special caveats on collector
+                    doc["component"] = caveat_swap_xdcr(doc)
+                    if caveat_should_skip(doc):
+                        continue
+
+                    if caveat_should_skip_mobile(doc):
+                        continue
+
+                    if "additional_fields" in view:
+                        for additional_field_key, additional_field_value in view["additional_fields"].items():
+                            for value_pairs in additional_field_value:
+                                if value_pairs[0].upper() in doc["name"].upper():
+                                    doc[additional_field_key] = value_pairs[1].upper()
+                                    break
+
+                    # if bucket == "server":
+                    #     # get any test variants (e.g. bucket storage)
+                    #     doc["variants"] = get_variants(params, doc["component"])
+                    #     add_variants_to_name(doc)
+
+                    doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report,
+                                                  url + str(bid))
+                    update_skip_count(greenboard_bucket, view, doc)
+                    doc["triage"], doc["bugs"] = get_manual_triage_and_bugs(triage_history_bucket,
+                                                                            view["bucket"], doc)
+
+                    histKey = doc["name"] + "-" + doc["build"]
+                    if not first_pass and histKey in buildHist:
+
+                        # print "REJECTED- doc already in build results: %s" % doc
+                        # print buildHist
+
+                        # attempt to delete if this record has been stored in couchbase
+
+                        try:
+                            oldKey = "%s-%s" % (doc["name"], doc["build_id"])
+                            oldKey = hashlib.md5(oldKey.encode()).hexdigest()
+                            client.remove(oldKey)
+                            # print "DELETED- %d:%s" % (bid, histKey)
+                        except (Exception,):
+                            pass
+
+                        continue  # already have this build results
+
+                    key = "%s-%s" % (doc["name"], doc["build_id"])
+                    key = hashlib.md5(key.encode()).hexdigest()
+
+                    try:  # get custom claim if exists
+                        oldDoc = client.get(key)
+                        customClaim = oldDoc.value.get('customClaim')
+                    #  if customClaim is not None:
+                    #      doc["customClaim"] = customClaim
+                    except (Exception,):
+                        pass  # ok, this is new doc
+                    retries = 5
+                    while retries > 0:
+                        try:
+                            client.upsert(key, doc)
+                            buildHist[histKey] = doc["build_id"]
+                            already_scraped.append(already_scraped_key)
+                            break
+                        except Exception as e:
+                            print("set failed, couchbase down?: %s" % HOST)
+                            print(e)
+                            retries -= 1
+                    if retries == 0:
+                        with open("errors.txt", 'a+') as error_file:
+                            error_file.writelines(doc.__str__())
+                    if doc.get("claimedBuilds"):  # rm custom claim
+                        del doc["claimedBuilds"]
+                except Exception as e:
+                    print("Some unintended exception occurred : {0}".format(e))
+        if first_pass:
+            store_cloud((jobDoc, view, already_scraped), first_pass=False,
+                        lastTotalCount=lastTotalCount, claimedBuilds=claimedBuilds)
+    except Exception as e:
+        print("Some unintended exception occurred : {0}".format(e))
 
 
 def storeTest(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
@@ -650,8 +952,7 @@ def storeTest(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                         doc["server_version"] = getAction(params, "name",
                                                           "COUCHBASE_SERVER_VERSION")
                         doc["sync_gateway_version"] = getAction(params, "name",
-                                                                        "SYNC_GATEWAY_VERSION")
-
+                                                                "SYNC_GATEWAY_VERSION")
 
                     if is_syncgateway or is_cblite or is_cblite_p2p:
                         if "server_version" not in doc or doc["server_version"] is None:
@@ -696,7 +997,8 @@ def storeTest(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                                     continue
 
                         build_no_to_process = ""
-                        viable_build_params = [build_param for build_param in view["build_param_name"] if os.upper() in build_param.upper()]
+                        viable_build_params = [build_param for build_param in view["build_param_name"] if
+                                               os.upper() in build_param.upper()]
                         for build_param in viable_build_params:
                             param_value = getAction(params, "name", build_param)
                             if param_value:
@@ -710,9 +1012,11 @@ def storeTest(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                         doc["os"] = os_to_process
                         doc["build"] = build_no_to_process
 
-                        doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report, url + str(bid))
+                        doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report,
+                                                      url + str(bid))
                         update_skip_count(greenboard_bucket, view, doc)
-                        doc["triage"], doc["bugs"] = get_manual_triage_and_bugs(triage_history_bucket, view["bucket"], doc)
+                        doc["triage"], doc["bugs"] = get_manual_triage_and_bugs(triage_history_bucket, view["bucket"],
+                                                                                doc)
 
                         histKey = doc["name"] + "-" + doc["build"] + doc["os"]
                         if not first_pass and histKey in buildHist:
@@ -749,9 +1053,11 @@ def storeTest(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                             doc["variants"] = get_variants(params, doc["component"])
                             add_variants_to_name(doc)
 
-                        doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report, url + str(bid))
+                        doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report,
+                                                      url + str(bid))
                         update_skip_count(greenboard_bucket, view, doc)
-                        doc["triage"], doc["bugs"] = get_manual_triage_and_bugs(triage_history_bucket, view["bucket"], doc)
+                        doc["triage"], doc["bugs"] = get_manual_triage_and_bugs(triage_history_bucket, view["bucket"],
+                                                                                doc)
 
                         histKey = doc["name"] + "-" + doc["build"]
                         if not first_pass and histKey in buildHist:
@@ -800,9 +1106,11 @@ def storeTest(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                 except Exception as ex:
                     print("Some unintented exception occured : %s" % ex)
         if first_pass:
-            storeTest((jobDoc, view, already_scraped), first_pass=False, lastTotalCount=lastTotalCount, claimedBuilds=claimedBuilds)
+            storeTest((jobDoc, view, already_scraped), first_pass=False, lastTotalCount=lastTotalCount,
+                      claimedBuilds=claimedBuilds)
     except Exception as ex:
         print("Some unintented exception occured : %s" % ex)
+
 
 def storeOperator(input, first_pass=True, lastTotalCount=-1,
                   claimedBuilds=None):
@@ -924,10 +1232,10 @@ def storeOperator(input, first_pass=True, lastTotalCount=-1,
                     if not doc['component']:
                         continue
                     doc['build'] = getOperatorBuild(params, "%s%s" % (doc[
-                        'url'], doc['build_id']))
+                                                                          'url'], doc['build_id']))
                     doc['priority'] = P1
                     serverVersion = getAction(params, "name",
-                                                      "server_image")
+                                              "server_image")
                     doc["server_version"] = processOperatorServerVersion(serverVersion)
                     if not doc.get("build"):
                         continue
@@ -998,7 +1306,7 @@ def storeOperator(input, first_pass=True, lastTotalCount=-1,
 
 
 def storeCapella(input, first_pass=True, lastTotalCount=-1,
-                  claimedBuilds=None):
+                 claimedBuilds=None):
     try:
         jobDoc, view, already_scraped = input
         bucket = view["bucket"]
@@ -1172,16 +1480,16 @@ def storeCapella(input, first_pass=True, lastTotalCount=-1,
                     print("Some unintented exception occured : %s" % ex)
         if first_pass:
             storeCapella((jobDoc, view, already_scraped),
-                          first_pass=False,
-                          lastTotalCount=lastTotalCount,
-                          claimedBuilds=claimedBuilds)
+                         first_pass=False,
+                         lastTotalCount=lastTotalCount,
+                         claimedBuilds=claimedBuilds)
     except Exception as ex:
         print("Some unintented exception occured : %s" % ex)
 
 
 def storeBuild(run, name, view):
     cluster = newClient()
-    client = cluster.bucket("server").default_collection() # using server bucket (for now)
+    client = cluster.bucket("server").default_collection()  # using server bucket (for now)
     greenboard_bucket = cluster.bucket("greenboard").default_collection()
     job = getJS(run["url"], {"depth": 0})
     if not job:
@@ -1237,7 +1545,6 @@ def storeBuild(run, name, view):
     should_analyse_report = totalCount > 0 and result != "SUCCESS"
     claim = getClaimReason(actions, should_analyse_logs, should_analyse_report, run["url"] + job["id"])
     servers = get_servers(params, run["url"] + job["id"])
-    
 
     # lookup pass count fail count version
     doc = {
@@ -1379,6 +1686,7 @@ def getOperatorPlatform(name, view):
             break
     return _platform
 
+
 def getCapellaPlatform(name, view):
     # Add logic to get the actual platform from the job later once it's
     # implemented.
@@ -1507,11 +1815,18 @@ def pollcapella(view, already_scraped):
             doc['os'] = platform
             doc["url"] = job["url"]
             doc["color"] = job.get("color")
-            tJobs.append((doc, view, already_scraped))
-    pool = multiprocessing.Pool()
-    pool.map(storeCapella, tJobs)
-    pool.close()
-    pool.join()
+            # tJobs.append((doc, view, already_scraped))
+            if view["job"] == "capella":
+                storeCapella((doc, view, already_scraped))
+            elif view["job"] == "cloud":
+                store_cloud((doc, view, already_scraped))
+    # pool = multiprocessing.Pool()
+    # if view["job"] == "capella":
+    #     pool.map_async(storeCapella, tJobs)
+    # elif view["job"] == "cloud":
+    #     pool.map_async(store_cloud, tJobs)
+    # pool.close()
+    # pool.join()
 
 
 def getOperatorBuild(params, url):
@@ -1557,6 +1872,7 @@ def processOperatorKubernetesVersion(kubernetesVersion):
     if slices.__len__() < 2:
         return None
     return "%s.%s" % (slices[0], slices[1])
+
 
 def convert_changeset_to_old_format(new_doc, timestamp):
     old_format = {}
@@ -1642,9 +1958,9 @@ def newClient(password="password"):
 if __name__ == "__main__":
 
     # run build collect info thread
-    tBuild = Thread(target=collectAllBuildInfo)
-    tBuild.daemon = True
-    tBuild.start()
+    # tBuild = Thread(target=collectAllBuildInfo)
+    # tBuild.daemon = True
+    # tBuild.start()
 
     manager = multiprocessing.Manager()
     already_scraped = {}

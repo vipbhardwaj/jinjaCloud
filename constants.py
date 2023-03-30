@@ -7,6 +7,8 @@ UBER_PASS = os.environ.get('UBER_PASS') or ""
 SERVER_PLATFORMS = ["UBUNTU", "CENTOS", "DEBIAN", "WIN",
                     "MAC", "SUSE",
                     "OEL", "DOCKER", "RHEL", "AMZN2"]
+CLOUD_PLATFORMS = ["AWS", "CAPELLA_SERVERLESS", "CENTOS", "DEBIAN", "ELIXIR_ONPREM", "MAC", "OEL", "ON PREM",
+                   "ON_PREM", "PROVISIONED_ONCLOUD", "SERVERLESS_ONCLOUD", "SUSE"]
 SG_PLATFORMS = ["CEN7", "CEN006", "WINDOWS", "MACOSX", "CENTOS"]
 SDK_PLATFORMS = [".NET", "JAVA", "LIBC", "NODE"]
 MOBILE_VERSION = ["1.1.0", "1.2.0", "1.3", "1.4"]
@@ -120,18 +122,30 @@ BUILD_FEATURES = ["SANITY-BUILD_SANITY", "UNIX-UNIT", "UNIT-UNIT"]
 
 CAPELLA_FEATURES = ["UI-UI",
                     "SDK-SDK",
-                    "TESTRUNNER-FUNCTIONAL",
+                    "SANITY-SANITY",
                     "VOLUME-VOLUME",
                     "CHAOS-CHAOS",
                     "THROTTLING-FUNCTIONAL",
                     "METERING-FUNCTIONAL",
                     "TENANT_MGMT-FUNCTIONAL",
-                    "TENANT_MANAGEMENT-FUNCTIONAL"]
+                    "TENANT_MANAGEMENT-FUNCTIONAL",
+                    "TESTRUNNER-FUNCTIONAL"]
 
 
 ## ---  VIEWS --- ##
-SERVER_VIEW = {"urls": ["http://qa.sc.couchbase.com",
-                        "http://qa.sc.couchbase.com/view/Cloud", "http://sdkbuilds.sc.couchbase.com/view/JAVA/job/server-build-test-java", "http://sdkbuilds.sc.couchbase.com/view/.NET/job/server-build-test-net/", "http://sdkbuilds.sc.couchbase.com/view/GO/job/server-build-test-go/", "http://sdkbuilds.sc.couchbase.com/view/JAVA/job/server-build-test-java/", "http://sdkbuilds.sc.couchbase.com/view/.NET/job/server-build-test-net/", "http://sdkbuilds.sc.couchbase.com/view/GO/job/server-build-test-go/", "http://sdkbuilds.sc.couchbase.com/job/Fast-failover-Java/","http://sdkbuilds.sc.couchbase.com/job/fastfailover-lcb/", "http://sdkbuilds.sc.couchbase.com/view/JAVA/job/feature-java", "http://qa.sc.couchbase.com/view/OS%20Certification/", "http://uberjenkins.sc.couchbase.com:8080/", "http://sdkbuilds.sc.couchbase.com/view/IPV6", "http://sdk.jenkins.couchbase.com/view/Greenboard/"],
+CLOUD_VIEW = {
+    "urls": ["http://qe-jenkins.sc.couchbase.com/view/Cloud/"],
+    "platforms": CLOUD_PLATFORMS,
+    "features": CAPELLA_FEATURES,
+    "build_param_name": ["version_number", "cluster_version", "build", "COUCHBASE_SERVER_VERSION", "CB_VERSION"],
+    "image_param_name": ["IMAGE", "image", "image_name", "cbs_image", "cb_image"],
+    # "server_version_name": ["server_version", "version", "cbs_version", "VERSION"],
+    "bucket": "capella",
+    "exclude": ["t[e]?mp(_|-)", "(_|-)t[e]?mp"],
+    "job": "cloud"
+}
+
+SERVER_VIEW = {"urls": ["http://qa.sc.couchbase.com/"],
                "platforms": SERVER_PLATFORMS,
                "features": SERVER_FEATURES,
                "build_param_name": ["version_number", "cluster_version",
@@ -242,16 +256,16 @@ OPERATOR_VIEW = {"urls": ["http://qa.sc.couchbase.com/view/Cloud"],
                  "bucket": "operator"
                  }
 
-CAPELLA_VIEW = { "urls": ["http://qa.sc.couchbase.com/view/Capella"],
-                 "platforms": CAPELLA_PLATFORMS,
-                 "features": CAPELLA_FEATURES,
-                 "build_param_name": ["build"],
-                 "bucket": "capella"}
+CAPELLA_VIEW = {
+    "urls": ["http://qa.sc.couchbase.com/view/Capella"],
+    "platforms": CAPELLA_PLATFORMS,
+    "features": CAPELLA_FEATURES,
+    "build_param_name": ["build"],
+    "bucket": "capella",
+    "job": "capella"
+}
 
-VIEWS = [SERVER_VIEW, SERVER_VIEW_2, BUILD_VIEW, SG_VIEW,
-         CBLITE_CLIB_VIEW,
-         CBLITE_DOTNET_VIEW, CBLITE_JAVA_VIEW, CBLITE_ANDROID_VIEW,
-         CBLITE_IOS_VIEW, OPERATOR_VIEW, CAPELLA_VIEW]
+VIEWS = [CLOUD_VIEW]
 
 
 BUILDER_URLS = ["http://server.jenkins.couchbase.com/job/couchbase-server-build/",
