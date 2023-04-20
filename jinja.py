@@ -769,6 +769,8 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                             doc["component"] = "CP_CLI"
                             doc["name"] = scenario.split('/')[-1].split('.')[0]
                             doc["os"] = scenario.split('/')[-1].split('.')[0].split('-')[0].upper()
+                            if doc["os"] not in view["platforms"]:
+                                doc["os"] = getCapellaPlatform(doc["name"], view)
                     elif doc["name"] == "UI-Automation-V2":
                         spec = getAction(params, "name", "SPEC")
                         if "SERVERLESS" in spec.upper():
