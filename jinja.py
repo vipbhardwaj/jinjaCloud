@@ -8,7 +8,7 @@ import hashlib
 import copy
 import configparser
 import json
-
+from datetime import datetime
 from threading import Thread
 from requests.auth import HTTPBasicAuth
 
@@ -21,7 +21,7 @@ UBER_USER = os.environ.get('UBER_USER') or ""
 UBER_PASS = os.environ.get('UBER_PASS') or ""
 
 JOBS = {}
-HOST = '172.23.136.115'
+HOST = '172.23.136.134'
 DEFAULT_BUCKET_STORAGE = "COUCHSTORE"
 DEFAULT_GSI_TYPE = "PLASMA"
 DEFAULT_ARCHITECTURE = "x86_64"
@@ -489,14 +489,106 @@ def get_build_from_image(params, images):
     for img_param_name in images:
         if getAction(params, "name", img_param_name):
             image = getAction(params, "name", img_param_name)
-            build = image.split()[3] + '-' + image.split()[4]
+            build = image.split('-')[3] + '-' + image.split('-')[4]
             break
     return build
+
+
+def get_env(params, envs):
+    env = None
+    for env_param_name in envs:
+        if getAction(params, "name", env_param_name):
+            env_url = getAction(params, "name", env_param_name)
+            env = env_url.split('.')[-3]
+            if env == "cloud":
+                env = "prod"
+            elif env == "sandbox":
+                env = "sbx"
+            elif "dev" in env:
+                env = "dev"
+    return env
+
+
+def get_latest_release(timestamp, os_path):
+    release_commit = requests.get(
+        'https://api.github.com/repos/couchbasecloud/couchbase-cloud/commits?'
+        'path=/internal/' + os_path + '/versions/releases.go&until=' + timestamp,
+        auth=('vipbhardwaj', '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')
+    ).json()[0]["sha"]
+
+    releases = requests.get(
+        'https://raw.githubusercontent.com/couchbasecloud/couchbase-cloud/'
+        + release_commit + '/internal/' + os_path + '/versions/releases.go',
+        auth=('vipbhardwaj', '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')
+    )
+    flag = False
+    release = None
+    for line in releases.iter_lines(decode_unicode=True):
+        if "[]Release{" in line:
+            flag = True
+            continue
+        if flag and "release" in line:
+            release = line.strip()[:-1]
+            break
+    return release
+
+
+def get_params_from_git_release(doc, os_path):
+    ISOtime = datetime.fromtimestamp(int(doc["timestamp"])/1000).isoformat()
+    release = get_latest_release(ISOtime, os_path)
+
+    # timestamp -> get the latest commitID BEFORE the timestamp and use as a param in the URL.
+    commit = requests.get(
+        'https://api.github.com/repos/couchbasecloud/couchbase-cloud/commits?'
+        'path=/internal/' + os_path + '/versions/one.go&until=' + ISOtime,
+        auth=('vipbhardwaj', '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')
+    ).json()[0]["sha"]
+
+    r = requests.get(
+        'https://raw.githubusercontent.com/couchbasecloud/couchbase-cloud/'
+        + commit + '/internal/' + os_path + '/versions/one.go',
+        auth=('vipbhardwaj', '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')
+    )
+    flag = False
+    d = {}
+    if os_path == 'serverless':
+        for line in r.iter_lines(decode_unicode=True):
+            if release in line:
+                flag = True
+                continue
+            if flag and "AWS" in line:
+                if d.get('build') is None:
+                    d['build'] = line.split(': ')[1][1:-2]
+                elif d.get('dapi') is None:
+                    d['dapi'] = line.split(': ')[1][1:-2]
+                elif d.get('dni') is None:
+                    d['dni'] = line.split(': ')[1][1:-2]
+    else:
+        key = None
+        key_os = "Azure"
+        if doc["os"] != "AZURE":
+            key_os = doc["os"]
+        for line in r.iter_lines(decode_unicode=True):
+            if release in line:
+                flag = True
+                continue
+            if flag and "Name:" in line and key_os in line:
+                key = line.split(':')[1].strip()[:-1]
+        for line in r.iter_lines(decode_unicode=True):
+            if key in line:
+                d['build'] = line.split('= ')[1][1:-1]
+                break
+    return d
 
 
 def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
     try:
         jobDoc, view, already_scraped = input
+        if "SERVERLESS" in jobDoc['name'].upper() or \
+                "DAPI" in jobDoc['name'].upper() or \
+                "NEBULA" in jobDoc['name'].upper() or \
+                "ELIXIR" in jobDoc['name'].upper():
+            return
         print(jobDoc["name"])
         bucket = view["bucket"]
 
@@ -644,33 +736,43 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                         doc["name"] = pseudoName
 
                         _os, _comp = getOsComponent(pseudoName, view)
-                        if _os and _comp:
+                        if _os:
                             doc["os"] = _os
+                        else:
+                            server_type = getAction(params, "name", "server_type")
+                            if server_type and server_type != DEFAULT_SERVER_TYPE:
+                                if "SERVERLESS" == server_type.split('_')[0]:
+                                    continue
+                                doc["os"] = server_type.split('_')[0]
+                        if _comp:
                             doc["component"] = _comp
-                        if not doc.get("os") or not doc.get("component"):
-                            continue
-
-                    # replace os with server type if it exists and is not the default
-                    server_type = getAction(params, "name", "server_type")
-                    if server_type and server_type != DEFAULT_SERVER_TYPE:
-                        doc["os"] = server_type
-                    elif "SERVERLESS" in doc["name"].upper():
-                        doc["os"] = "SERVERLESS_ONCLOUD"
+                        else:
+                            doc["component"] = componentParam
                     else:
-                        doc["os"] = "PROVISIONED_ONCLOUD"
+                        _os, _comp = getOsComponent(doc['name'], view)
+                        # if _os and _comp:
+                        doc["os"] = _os
+                        doc["component"] = _comp
 
-                    # based on the `os` type, setting respective parameters for the current doc
-                    if doc["os"] == "SERVERLESS_ONCLOUD":
-                        dapi_img = getAction(params, "name", "dapi_image")
-                        if dapi_img:
-                            doc["dapi_img"] = dapi_img
-                        dni = getAction(params, "name", "nebulaImage")
-                        if dni:
-                            doc["dni"] = dni
-                    else:
+                    if not doc.get("os") or doc["os"] == "AWS" or doc["os"] == "PROVISIONED":
                         provider = getAction(params, "name", "provider")
                         if provider:
-                            doc["provider"] = provider
+                            doc['os'] = provider
+                        else:
+                            doc['os'] = getCapellaPlatform(doc['name'], view)
+
+                    if doc["name"] == "cp-cli-runner":
+                        scenario = getAction(params, "name", "SCENARIO")
+                        if scenario:
+                            doc["component"] = "CP_CLI"
+                            doc["name"] = scenario.split('/')[-1].split('.')[0]
+                            doc["os"] = scenario.split('/')[-1].split('.')[0].split('-')[0].upper()
+                    elif doc["name"] == "UI-Automation-V2":
+                        spec = getAction(params, "name", "SPEC")
+                        if "SERVERLESS" in spec.upper():
+                            doc["os"] = "SERVERLESS"
+                        else:
+                            doc["os"] = getAction(params, "name", "CLOUD_SERVICE_PROVIDER").upper()
 
                     # setting component from suite_type if component is None
                     if not doc.get("component"):
@@ -678,14 +780,32 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                         if suite_type:
                             doc["component"] = suite_type
 
-                    doc["servers"] = get_servers(params, url + str(bid))
+                    # based on the `os`, setting respective parameters for the doc
+                    if doc["os"] == "SERVERLESS":
+                        continue
 
+                    provider = getAction(params, "name", "provider")
+                    if provider:
+                        doc["provider"] = provider
+
+                    doc["env"] = get_env(params, view["env-param-name"])
                     doc["build"], doc["priority"] = getBuildAndPriority(params, view["build_param_name"])
-
                     if not doc.get("build"):
                         doc["build"] = get_build_from_image(params, view["image_param_name"])
-                        if not doc.get("build"):
-                            continue
+                    if not doc.get("build"):
+                        d = get_params_from_git_release(doc, 'clusters')
+                        if d["build"][29] == 'v':
+                            doc['build'] = d["build"][23:34].split('-')[0] + '-' + d["build"][23:34].split('-')[1][1:]
+                        elif d['build'][24] == '-':
+                            doc['build'] = d['build'][23] + '.' + d['build'][25] + '.' + d['build'][27:33]
+                        else:
+                            doc['build'] = d['build'].split('-')[3] + '-' + d['build'].split('-')[4]
+                    # elif doc["os"] == "GCP":
+                    #     doc['build'] = d["build"][23:34]
+                    # elif doc["os"] == "AZURE":
+                    #     if d["build"][29] == 'v':
+                    #         doc['build'] = d["build"][23:34].split('-')[0] + '-' + d["build"][23:34].split('-')[1][1:]
+                    # doc['build'] = '7.1.3-3480'
 
                     # run special caveats on collector
                     doc["component"] = caveat_swap_xdcr(doc)
@@ -701,11 +821,6 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                                 if value_pairs[0].upper() in doc["name"].upper():
                                     doc[additional_field_key] = value_pairs[1].upper()
                                     break
-
-                    # if bucket == "server":
-                    #     # get any test variants (e.g. bucket storage)
-                    #     doc["variants"] = get_variants(params, doc["component"])
-                    #     add_variants_to_name(doc)
 
                     doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report,
                                                   url + str(bid))
@@ -758,9 +873,301 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                     if doc.get("claimedBuilds"):  # rm custom claim
                         del doc["claimedBuilds"]
                 except Exception as e:
-                    print("Some unintended exception occurred : {0}".format(e))
+                    print("Some unintended exception occurred in bid {1}: {0}".format(e, bid))
         if first_pass:
             store_cloud((jobDoc, view, already_scraped), first_pass=False,
+                        lastTotalCount=lastTotalCount, claimedBuilds=claimedBuilds)
+    except Exception as e:
+        print("Some unintended exception occurred : {0}".format(e))
+
+
+def store_serverless(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
+    try:
+        jobDoc, view, already_scraped = input
+        print(jobDoc["name"])
+        bucket = view["bucket"]
+
+        claimedBuilds = claimedBuilds or {}
+        cluster = newClient()
+        client = cluster.bucket(bucket).default_collection()
+        greenboard_bucket = cluster.bucket("greenboard").default_collection()
+        triage_history_bucket = cluster.bucket("triage_history").default_collection()
+
+        doc = copy.deepcopy(jobDoc)
+        url = doc["url"]
+
+        if url.find("qe-jenkins1.sc.couchbase.com/") > -1:
+            url = url.replace("qe-jenkins1.sc.couchbase.com/", "qe-jenkins.sc.couchbase.com/view/Cloud/")
+
+        res = getJS(url, {"depth": 0})
+
+        if res is None:
+            return
+
+        # do not process disabled jobs
+        if isDisabled(doc):
+            purgeDisabled(res, bucket)
+            return
+
+        # operate as 2nd pass if test_executor
+        if isExecutor(doc["name"]):
+            first_pass = False
+
+        buildHist = {}
+        if res.get("lastBuild") is not None:
+
+            bids = [b["number"] for b in res["builds"]]
+
+            if isExecutor(doc["name"]):
+                # include all jenkins history
+                bids = list(range(res["firstBuild"]["number"], res["lastBuild"]["number"] + 1))
+                bids.reverse()
+            elif first_pass:
+                bids.reverse()  # bottom to top 1st pass
+
+            for bid in bids:
+                try:
+                    doc = copy.deepcopy(jobDoc)
+                    oldName = JOBS.get(doc["name"]) is not None
+                    if oldName and bid in JOBS[doc["name"]]:
+                        continue  # job already stored
+                    else:
+                        if oldName and first_pass is False:
+                            JOBS[doc["name"]].append(bid)
+
+                    doc["build_id"] = bid
+
+                    already_scraped_key = doc["url"] + str(doc["build_id"])
+
+                    if already_scraped_key in already_scraped:
+                        continue
+
+                    should_process = False
+
+                    for _ in range(2):
+                        res = getJS(url + str(bid), {"depth": 0})
+                        if not build_finished(res):
+                            break
+                        # retry after 10 seconds if jenkins race condition where result and duration have not
+                        # been updated to reflect test results
+                        # e.g. result set to success, test result processed, result updated, duration updated.
+                        if res["duration"] == 0:
+                            print("Sleeping for 10 seconds, potential Jenkins race condition detected...")
+                            time.sleep(10)
+                        else:
+                            should_process = True
+                            break
+
+                    if not should_process:
+                        continue
+
+                    doc["result"] = res["result"]
+                    doc["duration"] = res["duration"]
+                    doc["timestamp"] = res["timestamp"]
+
+                    actions = res["actions"]
+                    params = getAction(actions, "parameters")
+                    if skipCollect(params):
+                        continue
+
+                    if skipServerCollect(params):
+                        continue
+
+                    totalCount = getAction(actions, "totalCount") or 0
+                    failCount = getAction(actions, "failCount") or 0
+                    skipCount = getAction(actions, "skipCount") or 0
+                    # failed or no tests passed
+                    should_analyse_logs = res["result"] != "SUCCESS"
+                    # at least one test executed
+                    should_analyse_report = totalCount > 0 and res["result"] != "SUCCESS"
+                    if totalCount == 0:
+                        if not isExecutor(doc["name"]):
+                            # skip non executor jobs where totalCount == 0 and no lastTotalCount
+                            if lastTotalCount == -1:
+                                continue
+                            else:
+                                # only set totalCount to lastTotalCount if this is not an executor job
+                                # if this is an executor job, the last run will probably be a completely
+                                # different set of tests so lastTotalCount is irrelevant
+                                totalCount = lastTotalCount
+                                failCount = totalCount
+                    else:
+                        lastTotalCount = totalCount
+
+                    doc["failCount"] = failCount
+                    doc["totalCount"] = totalCount - skipCount
+                    doc["skipCount"] = 0
+                    if params is None:
+                        # possibly new api
+                        if 'keys' not in dir(actions) and len(actions) > 0:
+                            # actions is not a dict and has data
+                            # then use the first object that is a list
+                            for a in actions:
+                                if 'keys' not in dir(a):
+                                    params = a
+
+                    componentParam = getAction(params, "name", "component")
+                    if componentParam is None:
+                        testYml = getAction(params, "name", "test")
+                        if testYml and testYml.find(".yml"):
+                            testFile = testYml.split(" ")[1]
+                            componentParam = "systest-" + str(os.path.split(testFile)[-1]).replace(".yml", "")
+
+                    if componentParam and componentParam != 'generic-component':
+                        subComponentParam = getAction(params, "name", "subcomponent")
+                        if subComponentParam is None:
+                            subComponentParam = "server"
+                        osParam = getAction(params, "name", "OS") or getAction(params, "name", "os")
+                        if osParam is None:
+                            osParam = doc["os"]
+                        if not componentParam or not subComponentParam or not osParam:
+                            continue
+
+                        architecture = getAction(params, "name", "arch")
+                        if architecture and architecture != DEFAULT_ARCHITECTURE:
+                            osParam += "-" + architecture
+
+                        pseudoName = str(osParam + "-" + componentParam + "_" + subComponentParam)
+                        doc["name"] = pseudoName
+
+                        _os, _comp = getOsComponent(pseudoName, view)
+                        if _os:
+                            doc["os"] = _os
+                        else:
+                            server_type = getAction(params, "name", "server_type")
+                            if server_type and server_type != DEFAULT_SERVER_TYPE:
+                                doc["os"] = server_type.split('_')[0]
+                        if _comp:
+                            doc["component"] = _comp
+                        else:
+                            doc["component"] = componentParam
+                    else:
+                        _os, _comp = getOsComponent(doc['name'], view)
+                        # if _os and _comp:
+                        doc["os"] = _os
+                        doc["component"] = _comp
+                        if doc['name'] == 'dapi_sanity' or \
+                                doc['name'] == 'DirectNebulaJob-centos-sdk' or \
+                                'SERVERLESS' in doc['name'].upper() or 'ELIXIR' in doc['name'].upper():
+                            doc["os"] = "SERVERLESS"
+
+                    if not doc.get("os") or doc["os"] != "SERVERLESS":
+                        provider = getAction(params, "name", "provider")
+                        if provider:
+                            doc['os'] = provider
+                        else:
+                            doc['os'] = getCapellaPlatform(doc['name'], view)
+
+                    if doc["name"] == "cp-cli-runner":
+                        scenario = getAction(params, "name", "SCENARIO")
+                        if scenario:
+                            doc["component"] = "CP_CLI"
+                            doc["name"] = scenario.split('/')[-1].split('.')[0]
+                            doc["os"] = scenario.split('/')[-1].split('.')[0].split('-')[0].upper()
+                    elif doc["name"] == "UI-Automation-V2":
+                        spec = getAction(params, "name", "SPEC")
+                        if "SERVERLESS" in spec.upper():
+                            doc["os"] = "SERVERLESS"
+                        else:
+                            doc["os"] = getAction(params, "name", "CLOUD_SERVICE_PROVIDER").upper()
+
+                    # based on the `os`, setting respective parameters for the doc
+                    if doc["os"] != "SERVERLESS":
+                        continue
+
+                    # setting component from suite_type if component is None
+                    if not doc.get("component"):
+                        suite_type = getAction(params, "name", "suite_type")
+                        if suite_type:
+                            doc["component"] = suite_type
+
+                    doc["dapi"] = getAction(params, "name", "dapi_image")
+
+                    doc["dni"] = getAction(params, "name", "nebulaImage") or getAction(params, "name", "dn_image")
+
+                    doc["env"] = get_env(params, view["env-param-name"])
+                    doc["build"], doc["priority"] = getBuildAndPriority(params, view["build_param_name"])
+                    if not doc.get("build"):
+                        doc["build"] = get_build_from_image(params, view["image_param_name"])
+                    if not doc.get("build") or not doc.get("dapi") or not doc.get("dni"):
+                        d = get_params_from_git_release(doc, 'serverless')
+                        if not doc.get("build"):
+                            doc['build'] = d['build'].split('-')[3] + '-' + d['build'].split('-')[4]
+                        if not doc.get("dapi"):
+                            doc['dapi'] = d['dapi']
+                        if not doc.get("dni"):
+                            doc['dni'] = d['dni']
+
+                    doc["servers"] = get_servers(params, url + str(bid))
+
+                    # run special caveats on collector
+                    doc["component"] = caveat_swap_xdcr(doc)
+                    if caveat_should_skip(doc):
+                        continue
+                    if caveat_should_skip_mobile(doc):
+                        continue
+
+                    if "additional_fields" in view:
+                        for additional_field_key, additional_field_value in view["additional_fields"].items():
+                            for value_pairs in additional_field_value:
+                                if value_pairs[0].upper() in doc["name"].upper():
+                                    doc[additional_field_key] = value_pairs[1].upper()
+                                    break
+
+                    doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report,
+                                                  url + str(bid))
+                    update_skip_count(greenboard_bucket, view, doc)
+                    doc["triage"], doc["bugs"] = get_manual_triage_and_bugs(triage_history_bucket,
+                                                                            view["bucket"], doc)
+
+                    histKey = doc["name"] + "-" + doc["build"]
+                    if not first_pass and histKey in buildHist:
+
+                        # print "REJECTED-doc already in build results: %s" % doc
+                        # print buildHist
+
+                        # attempt to delete if this record has been stored in couchbase
+
+                        try:
+                            oldKey = "%s-%s" % (doc["name"], doc["build_id"])
+                            oldKey = hashlib.md5(oldKey.encode()).hexdigest()
+                            client.remove(oldKey)
+                            # print "DELETED- %d:%s" % (bid, histKey)
+                        except (Exception,):
+                            pass
+
+                        continue  # already have this build results
+
+                    key = "%s-%s" % (doc["name"], doc["build_id"])
+                    key = hashlib.md5(key.encode()).hexdigest()
+
+                    try:  # get custom claim if exists
+                        oldDoc = client.get(key)
+                        customClaim = oldDoc.value.get('customClaim')
+                    #  if customClaim is not None:
+                    #      doc["customClaim"] = customClaim
+                    except (Exception,):
+                        pass  # ok, this is new doc
+                    retries = 5
+                    while retries > 0:
+                        try:
+                            client.upsert(key, doc)
+                            buildHist[histKey] = doc["build_id"]
+                            already_scraped.append(already_scraped_key)
+                            break
+                        except Exception as e:
+                            print("set failed, couchbase down?: %s" % HOST)
+                            print(e)
+                            retries -= 1
+                    if retries == 0:
+                        with open("errors.txt", 'a+') as error_file:
+                            error_file.writelines(doc.__str__())
+                    if doc.get("claimedBuilds"):  # rm custom claim
+                        del doc["claimedBuilds"]
+                except Exception as e:
+                    print("Some unintended exception occurred in bid {1}: {0}".format(e, bid))
+        if first_pass:
+            store_serverless((jobDoc, view, already_scraped), first_pass=False,
                         lastTotalCount=lastTotalCount, claimedBuilds=claimedBuilds)
     except Exception as e:
         print("Some unintended exception occurred : {0}".format(e))
@@ -1816,15 +2223,45 @@ def pollcapella(view, already_scraped):
             doc["url"] = job["url"]
             doc["color"] = job.get("color")
             # tJobs.append((doc, view, already_scraped))
-            if view["job"] == "capella":
-                storeCapella((doc, view, already_scraped))
-            elif view["job"] == "cloud":
-                store_cloud((doc, view, already_scraped))
+            store_cloud((doc, view, already_scraped))
+
     # pool = multiprocessing.Pool()
     # if view["job"] == "capella":
     #     pool.map_async(storeCapella, tJobs)
     # elif view["job"] == "cloud":
     #     pool.map_async(store_cloud, tJobs)
+    # pool.close()
+    # pool.join()
+
+
+def pool_serverless(view, already_scraped):
+    tJobs = []
+
+    for url in view["urls"]:
+        j = getJS(url, {"depth": 0, "tree": "jobs[name,url,color]"})
+        if j is None or j.get('jobs') is None:
+            continue
+
+        for job in j["jobs"]:
+            if is_excluded(view, job):
+                print("skipping {} (excluded)".format(job["name"]))
+                continue
+            doc = {}
+            doc["name"] = job["name"]
+            if job["name"] in JOBS:
+                continue
+            JOBS[job["name"]] = []
+            platform = getCapellaPlatform(job["name"], view)
+            if not platform:
+                continue
+            doc['os'] = platform
+            doc["url"] = job["url"]
+            doc["color"] = job.get("color")
+            # tJobs.append((doc, view, already_scraped))
+            store_serverless((doc, view, already_scraped))
+
+    # pool = multiprocessing.Pool()
+    # pool.map(store_serverless, tJobs)
     # pool.close()
     # pool.join()
 
@@ -1977,6 +2414,8 @@ if __name__ == "__main__":
                     polloperator(view, already_scraped[view["bucket"]])
                 elif view["bucket"] == "capella":
                     pollcapella(view, already_scraped[view["bucket"]])
+                elif view["bucket"] == "serverless":
+                    pool_serverless(view, already_scraped[view["bucket"]])
                 else:
                     pollTest(view, already_scraped[view["bucket"]])
         except Exception as ex:

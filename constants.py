@@ -7,8 +7,6 @@ UBER_PASS = os.environ.get('UBER_PASS') or ""
 SERVER_PLATFORMS = ["UBUNTU", "CENTOS", "DEBIAN", "WIN",
                     "MAC", "SUSE",
                     "OEL", "DOCKER", "RHEL", "AMZN2"]
-CLOUD_PLATFORMS = ["AWS", "CAPELLA_SERVERLESS", "CENTOS", "DEBIAN", "ELIXIR_ONPREM", "MAC", "OEL", "ON PREM",
-                   "ON_PREM", "PROVISIONED_ONCLOUD", "SERVERLESS_ONCLOUD", "SUSE"]
 SG_PLATFORMS = ["CEN7", "CEN006", "WINDOWS", "MACOSX", "CENTOS"]
 SDK_PLATFORMS = [".NET", "JAVA", "LIBC", "NODE"]
 MOBILE_VERSION = ["1.1.0", "1.2.0", "1.3", "1.4"]
@@ -122,7 +120,12 @@ BUILD_FEATURES = ["SANITY-BUILD_SANITY", "UNIX-UNIT", "UNIT-UNIT"]
 
 CAPELLA_FEATURES = ["UI-UI",
                     "SDK-SDK",
+                    "CAPELLA_VOLUME-VOLUME",
+                    "CP_CLI_RUNNER-CP_CLI",
+                    "DAPI_SANITY-DAPI",
+                    "NEBULA-DIRECT_NEBULA",
                     "SANITY-SANITY",
+                    "PERF-PERF",
                     "VOLUME-VOLUME",
                     "CHAOS-CHAOS",
                     "THROTTLING-FUNCTIONAL",
@@ -131,16 +134,42 @@ CAPELLA_FEATURES = ["UI-UI",
                     "TENANT_MANAGEMENT-FUNCTIONAL",
                     "TESTRUNNER-FUNCTIONAL"]
 
+SERVERLESS_FEATURES = [
+    "CAPELLA_VOLUME-VOLUME",
+    "CP_CLI_RUNNER-CP_CLI",
+    "DAPI_SANITY-DAPI",
+    "NEBULA-DIRECT_NEBULA",
+    "SANITY-SANITY",
+    "PERF-PERF",
+    "SDK-SDK",
+    "VOLUME-VOLUME",
+    "SYSTEM-SYSTEM_TEST",
+    "UI-UI",
+    "TESTRUNNER-FUNCTIONAL"
+]
 
 ## ---  VIEWS --- ##
 CLOUD_VIEW = {
-    "urls": ["http://qe-jenkins.sc.couchbase.com/view/Cloud/"],
-    "platforms": CLOUD_PLATFORMS,
+    "urls": ["http://qe-jenkins.sc.couchbase.com/view/Cloud/", "http://qa.sc.couchbase.com/view/Capella"],
+    "platforms": CAPELLA_PLATFORMS,
     "features": CAPELLA_FEATURES,
     "build_param_name": ["version_number", "cluster_version", "build", "COUCHBASE_SERVER_VERSION", "CB_VERSION"],
     "image_param_name": ["IMAGE", "image", "image_name", "cbs_image", "cb_image"],
-    # "server_version_name": ["server_version", "version", "cbs_version", "VERSION"],
+    "env-param-name": ["CYPRESS_BASE_URL", "Environment", "CP_CLI_APIURL", "capella_api_url", "ENV_URL", "CP_API_URL",
+                       "public_api_url", "CP_URL", "URL", "url"],
     "bucket": "capella",
+    "exclude": ["t[e]?mp(_|-)", "(_|-)t[e]?mp"],
+}
+
+SERVERLESS_VIEW = {
+    "urls": ["http://qe-jenkins.sc.couchbase.com/view/Cloud/"],
+    "platforms": ["SERVERLESS"],
+    "features": SERVERLESS_FEATURES,
+    "build_param_name": ["version_number", "cluster_version", "build", "COUCHBASE_SERVER_VERSION", "CB_VERSION"],
+    "image_param_name": ["IMAGE", "image", "image_name", "cbs_image", "cb_image"],
+    "env-param-name": ["CYPRESS_BASE_URL", "Environment", "CP_CLI_APIURL", "capella_api_url", "ENV_URL", "CP_API_URL",
+                       "public_api_url", "CP_URL", "URL", "url"],
+    "bucket": "serverless",
     "exclude": ["t[e]?mp(_|-)", "(_|-)t[e]?mp"],
     "job": "cloud"
 }
@@ -256,16 +285,16 @@ OPERATOR_VIEW = {"urls": ["http://qa.sc.couchbase.com/view/Cloud"],
                  "bucket": "operator"
                  }
 
-CAPELLA_VIEW = {
-    "urls": ["http://qa.sc.couchbase.com/view/Capella"],
-    "platforms": CAPELLA_PLATFORMS,
-    "features": CAPELLA_FEATURES,
-    "build_param_name": ["build"],
-    "bucket": "capella",
-    "job": "capella"
-}
+# CAPELLA_VIEW = {
+#     "urls": [],
+#     "platforms": CAPELLA_PLATFORMS,
+#     "features": CAPELLA_FEATURES,
+#     "build_param_name": ["build"],
+#     "bucket": "capella",
+#     "job": "capella"
+# }
 
-VIEWS = [CLOUD_VIEW]
+VIEWS = [SERVERLESS_VIEW, CLOUD_VIEW]
 
 
 BUILDER_URLS = ["http://server.jenkins.couchbase.com/job/couchbase-server-build/",

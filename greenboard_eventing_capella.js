@@ -63,6 +63,7 @@ function OnUpdate(doc,meta) {
             }
             var build_to_store = {
                 "build_id": doc['build_id'],
+                "timestamp": doc['timestamp'],
                 "claim": doc['claim'],
                 "totalCount": doc['totalCount'],
                 "result": doc['result'],
@@ -75,6 +76,12 @@ function OnUpdate(doc,meta) {
                 "olderBuild": false,
                 "disabled": false,
                 "displayName": displayName
+            }
+            if (doc.hasOwnProperty('provider')){
+                build_to_store['provider'] = doc['provider']
+            }
+            if (doc.hasOwnProperty('env')) {
+                build_to_store['env'] = doc['env']
             }
             if (doc.hasOwnProperty("skipCount")) {
                 build_to_store["skipCount"] = doc["skipCount"]

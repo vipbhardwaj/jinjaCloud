@@ -49,10 +49,10 @@ function OnUpdate(doc, meta) {
                 "priority" : doc['priority'],
                 "jobs_in" : [version]
             };
-            if(doc.hasOwnProperty('server_version')) {
-                all_jobs_document['serverless'][os][component][name]['server_version'] = 
-                    doc['server_version'];
-            }
+            // if(doc.hasOwnProperty('build')) {
+            //     all_jobs_document['serverless'][os][component][name]['build'] =
+            //         doc['build'];
+            // }
             update_all_jobs_document = true;
         } else {
             if (all_jobs_document['serverless'][os][component][name]['jobs_in'].indexOf(version) == -1) {
@@ -68,6 +68,7 @@ function OnUpdate(doc, meta) {
         }
         var build_to_store = {
             "build_id": doc['build_id'],
+            "timestamp": doc['timestamp'],
             "claim": "",
             "totalCount": doc['totalCount'],
             "result": doc['result'],
@@ -80,22 +81,36 @@ function OnUpdate(doc, meta) {
             "olderBuild": false,
             "disabled": false
         }
-        if(doc.hasOwnProperty('server_version')) {
-            build_to_store['server_version'] = doc['server_version'];
+        if (doc.hasOwnProperty('dapi')){
+            build_to_store['dapi'] = doc['dapi']
+        }
+        if (doc.hasOwnProperty('dni')){
+            build_to_store['dni'] = doc['dni']
+        }
+        if (doc.hasOwnProperty('env')) {
+            build_to_store['env'] = doc['env']
+        }
+        if (doc.hasOwnProperty("skipCount")) {
+            build_to_store["skipCount"] = doc["skipCount"]
+        }
+        if (doc["timestamp"] !== undefined) {
+            build_to_store["timestamp"] = doc["timestamp"]
         }
         doc_to_insert['os'][os][component][name].push(build_to_store);
-        
+
         //Sort all the builds for the job and remove any duplicates from it.
-        doc_to_insert['os'][os][component][name] = 
+        doc_to_insert['os'][os][component][name] =
             doc_to_insert['os'][os][component][name].sort(function(a, b) {
             return b['build_id'] - a['build_id'];
         }).filter(function(item, pos, ary) {
             return !pos || item.build_id != ary[pos - 1].build_id;
         });
+
         doc_to_insert['os'][os][component][name][0]['olderBuild'] = false;
         for (var i = 1; i < doc_to_insert['os'][os][component][name].length; i++) {
             doc_to_insert['os'][os][component][name][i]['olderBuild'] = true;
         }
+
         let counts = get_total_count(doc_to_insert);
         const totalCount = counts['totalCount'];
         const failCount = counts['failCount'];
@@ -109,7 +124,7 @@ function OnUpdate(doc, meta) {
         if (update_all_jobs_document) {
             tgt['existing_builds_serverless'] = all_jobs_document
             for (let i=0; i < 1; i++) {
-                let valid = 
+                let valid =
                     validateExistingBuilds(doc, all_jobs_document["serverless"][os][component][name]);
                 if (valid) {
                     break;
@@ -219,10 +234,11 @@ function validateExistingBuilds(doc, build_to_store) {
                     if (existing_job["totalCount"] == build_to_store["totalCount"] &&
                         existing_job["url"] == build_to_store["url"] &&
                         existing_job["priority"] == build_to_store["priority"] &&
-                        JSON.stringify(existing_job["jobs_in"].sort()) == 
-                            JSON.stringify(build_to_store["jobs_in"].sort()) &&
-                        (doc.hasOwnProperty("server_version") && 
-                        existing_job["server_version"] == build_to_store["server_version"])) {
+                        JSON.stringify(existing_job["jobs_in"].sort()) ==
+                            JSON.stringify(build_to_store["jobs_in"].sort())
+                        // && (doc.hasOwnProperty("build") &&
+                        // existing_job["build"] == build_to_store["build"])
+                    ) {
                         valid_data = true;
                     } else {
                         valid_data = false;
@@ -258,10 +274,10 @@ function validateData(doc, build_to_store) {
         const os = doc['os'];
         const component = doc['component'];
         const name = doc['name'];
-        
+
         let doc_to_insert = get_build_document(build_version);
         let valid_data = false;
-        
+
         function upsertDocument(doc_to_upsert) {
             let counts = get_total_count(doc_to_insert);
             const totalCount = counts['totalCount'];
@@ -271,7 +287,7 @@ function validateData(doc, build_to_store) {
             const doc_id = build_version.concat("_serverless");
             tgt[doc_id] = doc_to_upsert;
         }
-        
+
         if (doc_to_insert.hasOwnProperty('os')) {
             if (doc_to_insert['os'].hasOwnProperty(os)) {
                 if (doc_to_insert['os'][os].hasOwnProperty(component)) {
@@ -286,9 +302,10 @@ function validateData(doc, build_to_store) {
                                 job_to_check['duration'] === doc['duration'] &&
                                 job_to_check['url'] === doc['url'] &&
                                 job_to_check['priority'] === doc['priority'] &&
-                                job_to_check['failCount'] == doc['failCount'] &&
-                                (doc.hasOwnProperty('server_version') &&
-                                job_to_check['server_version'] == doc['server_version'])) {
+                                job_to_check['failCount'] == doc['failCount']
+                                // && (doc.hasOwnProperty('build') &&
+                                // job_to_check['build'] == doc['servebuildr_version'])
+                            ) {
                                 valid_data = true;
                             } else {
                                 let index_of_job = jobs.findIndex(function(job) {
