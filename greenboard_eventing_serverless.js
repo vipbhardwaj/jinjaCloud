@@ -68,7 +68,6 @@ function OnUpdate(doc, meta) {
         }
         var build_to_store = {
             "build_id": doc['build_id'],
-            "timestamp": doc['timestamp'],
             "claim": "",
             "totalCount": doc['totalCount'],
             "result": doc['result'],
