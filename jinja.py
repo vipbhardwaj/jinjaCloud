@@ -513,13 +513,13 @@ def get_latest_release(timestamp, os_path):
     release_commit = requests.get(
         'https://api.github.com/repos/couchbasecloud/couchbase-cloud/commits?'
         'path=/internal/' + os_path + '/versions/releases.go&until=' + timestamp,
-        auth=('vipbhardwaj', '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')
+        auth=('vipbhardwaj', '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')
     ).json()[0]["sha"]
 
     releases = requests.get(
         'https://raw.githubusercontent.com/couchbasecloud/couchbase-cloud/'
         + release_commit + '/internal/' + os_path + '/versions/releases.go',
-        auth=('vipbhardwaj', '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')
+        auth=('vipbhardwaj', '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')
     )
     flag = False
     release = None
@@ -541,13 +541,13 @@ def get_params_from_git_release(doc, os_path):
     commit = requests.get(
         'https://api.github.com/repos/couchbasecloud/couchbase-cloud/commits?'
         'path=/internal/' + os_path + '/versions/one.go&until=' + ISOtime,
-        auth=('vipbhardwaj', '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')
+        auth=('vipbhardwaj', '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')
     ).json()[0]["sha"]
 
     r = requests.get(
         'https://raw.githubusercontent.com/couchbasecloud/couchbase-cloud/'
         + commit + '/internal/' + os_path + '/versions/one.go',
-        auth=('vipbhardwaj', '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')
+        auth=('vipbhardwaj', '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')
     )
     flag = False
     d = {}
