@@ -285,14 +285,6 @@ OPERATOR_VIEW = {"urls": ["http://qa.sc.couchbase.com/view/Cloud"],
                  "bucket": "operator"
                  }
 
-# CAPELLA_VIEW = {
-#     "urls": [],
-#     "platforms": CAPELLA_PLATFORMS,
-#     "features": CAPELLA_FEATURES,
-#     "build_param_name": ["build"],
-#     "bucket": "capella",
-#     "job": "capella"
-# }
 
 VIEWS = [SERVERLESS_VIEW, CLOUD_VIEW]
 

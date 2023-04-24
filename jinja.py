@@ -501,13 +501,11 @@ def get_env(params, envs):
     for env_param_name in envs:
         if getAction(params, "name", env_param_name):
             env_url = getAction(params, "name", env_param_name)
-            env = env_url.split('.')[-3]
+            env = env_url.split('.')[-3].split('/')[-1]
             if env == "cloud":
                 env = "prod"
             elif env == "sandbox":
                 env = "sbx"
-            elif "dev" in env:
-                env = "dev"
     return env
 
 
@@ -739,27 +737,28 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
 
                         _os, _comp = getOsComponent(pseudoName, view)
                         if _os:
-                            doc["os"] = _os
+                            doc["os"] = _os.upper()
                         else:
                             server_type = getAction(params, "name", "server_type")
                             if server_type and server_type != DEFAULT_SERVER_TYPE:
                                 if "SERVERLESS" == server_type.split('_')[0]:
                                     continue
-                                doc["os"] = server_type.split('_')[0]
+                                doc["os"] = server_type.split('_')[0].upper()
                         if _comp:
-                            doc["component"] = _comp
+                            doc["component"] = _comp.upper()
                         else:
-                            doc["component"] = componentParam
+                            doc["component"] = componentParam.upper()
                     else:
                         _os, _comp = getOsComponent(doc['name'], view)
-                        # if _os and _comp:
-                        doc["os"] = _os
-                        doc["component"] = _comp
+                        if _os:
+                            doc["os"] = _os.upper()
+                        if _comp:
+                            doc["component"] = _comp.upper()
 
                     if not doc.get("os") or doc["os"] == "AWS" or doc["os"] == "PROVISIONED":
                         provider = getAction(params, "name", "provider")
                         if provider:
-                            doc['os'] = provider
+                            doc['os'] = provider.upper()
                         else:
                             doc['os'] = getCapellaPlatform(doc['name'], view)
 
@@ -773,7 +772,7 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                                 doc["os"] = getCapellaPlatform(doc["name"], view)
                     elif doc["name"] == "UI-Automation-V2":
                         spec = getAction(params, "name", "SPEC")
-                        if "SERVERLESS" in spec.upper():
+                        if spec and "SERVERLESS" in spec.upper():
                             doc["os"] = "SERVERLESS"
                         else:
                             doc["os"] = getAction(params, "name", "CLOUD_SERVICE_PROVIDER").upper()
@@ -782,7 +781,7 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                     if not doc.get("component"):
                         suite_type = getAction(params, "name", "suite_type")
                         if suite_type:
-                            doc["component"] = suite_type
+                            doc["component"] = suite_type.upper()
 
                     # based on the `os`, setting respective parameters for the doc
                     if doc["os"] == "SERVERLESS":
@@ -790,9 +789,14 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
 
                     provider = getAction(params, "name", "provider")
                     if provider:
-                        doc["provider"] = provider
+                        doc["provider"] = provider.upper()
+                    else:
+                        doc["provider"] = getCapellaPlatform(doc['name'], view)
 
-                    doc["env"] = get_env(params, view["env-param-name"])
+                    env = get_env(params, view["env-param-name"])
+                    if env:
+                        doc["env"] = env.upper()
+
                     doc["build"], doc["priority"] = getBuildAndPriority(params, view["build_param_name"])
                     if not doc.get("build"):
                         doc["build"] = get_build_from_image(params, view["image_param_name"])
@@ -804,12 +808,6 @@ def store_cloud(input, first_pass=True, lastTotalCount=-1, claimedBuilds=None):
                             doc['build'] = d['build'][23] + '.' + d['build'][25] + '.' + d['build'][27:33]
                         else:
                             doc['build'] = d['build'].split('-')[3] + '-' + d['build'].split('-')[4]
-                    # elif doc["os"] == "GCP":
-                    #     doc['build'] = d["build"][23:34]
-                    # elif doc["os"] == "AZURE":
-                    #     if d["build"][29] == 'v':
-                    #         doc['build'] = d["build"][23:34].split('-')[0] + '-' + d["build"][23:34].split('-')[1][1:]
-                    # doc['build'] = '7.1.3-3480'
 
                     # run special caveats on collector
                     doc["component"] = caveat_swap_xdcr(doc)
@@ -1036,20 +1034,21 @@ def store_serverless(input, first_pass=True, lastTotalCount=-1, claimedBuilds=No
 
                         _os, _comp = getOsComponent(pseudoName, view)
                         if _os:
-                            doc["os"] = _os
+                            doc["os"] = _os.upper()
                         else:
                             server_type = getAction(params, "name", "server_type")
                             if server_type and server_type != DEFAULT_SERVER_TYPE:
-                                doc["os"] = server_type.split('_')[0]
+                                doc["os"] = server_type.split('_')[0].upper()
                         if _comp:
-                            doc["component"] = _comp
+                            doc["component"] = _comp.upper()
                         else:
-                            doc["component"] = componentParam
+                            doc["component"] = componentParam.upper()
                     else:
                         _os, _comp = getOsComponent(doc['name'], view)
-                        # if _os and _comp:
-                        doc["os"] = _os
-                        doc["component"] = _comp
+                        if _os:
+                            doc["os"] = _os.upper()
+                        if _comp:
+                            doc["component"] = _comp.upper()
                         if doc['name'] == 'dapi_sanity' or \
                                 doc['name'] == 'DirectNebulaJob-centos-sdk' or \
                                 'SERVERLESS' in doc['name'].upper() or 'ELIXIR' in doc['name'].upper():
@@ -1058,7 +1057,7 @@ def store_serverless(input, first_pass=True, lastTotalCount=-1, claimedBuilds=No
                     if not doc.get("os") or doc["os"] != "SERVERLESS":
                         provider = getAction(params, "name", "provider")
                         if provider:
-                            doc['os'] = provider
+                            doc['os'] = provider.upper()
                         else:
                             doc['os'] = getCapellaPlatform(doc['name'], view)
 
@@ -1070,7 +1069,7 @@ def store_serverless(input, first_pass=True, lastTotalCount=-1, claimedBuilds=No
                             doc["os"] = scenario.split('/')[-1].split('.')[0].split('-')[0].upper()
                     elif doc["name"] == "UI-Automation-V2":
                         spec = getAction(params, "name", "SPEC")
-                        if "SERVERLESS" in spec.upper():
+                        if spec and "SERVERLESS" in spec.upper():
                             doc["os"] = "SERVERLESS"
                         else:
                             doc["os"] = getAction(params, "name", "CLOUD_SERVICE_PROVIDER").upper()
@@ -1083,13 +1082,20 @@ def store_serverless(input, first_pass=True, lastTotalCount=-1, claimedBuilds=No
                     if not doc.get("component"):
                         suite_type = getAction(params, "name", "suite_type")
                         if suite_type:
-                            doc["component"] = suite_type
+                            doc["component"] = suite_type.upper()
 
                     doc["dapi"] = getAction(params, "name", "dapi_image")
+                    if doc['dapi']:
+                        doc['dapi'] = doc['dapi'].split('-')[-2] + '-' + doc['dapi'].split('-')[-1]
 
                     doc["dni"] = getAction(params, "name", "nebulaImage") or getAction(params, "name", "dn_image")
+                    if doc['dni']:
+                        doc['dni'] = doc['dni'].split('-')[-2] + '-' + doc['dni'].split('-')[-1]
 
-                    doc["env"] = get_env(params, view["env-param-name"])
+                    env = get_env(params, view["env-param-name"])
+                    if env:
+                        doc["env"] = env.upper()
+
                     doc["build"], doc["priority"] = getBuildAndPriority(params, view["build_param_name"])
                     if not doc.get("build"):
                         doc["build"] = get_build_from_image(params, view["image_param_name"])
@@ -1098,9 +1104,9 @@ def store_serverless(input, first_pass=True, lastTotalCount=-1, claimedBuilds=No
                         if not doc.get("build"):
                             doc['build'] = d['build'].split('-')[3] + '-' + d['build'].split('-')[4]
                         if not doc.get("dapi"):
-                            doc['dapi'] = d['dapi']
+                            doc['dapi'] = d['dapi'].split('-')[-2] + '-' + d['dapi'].split('-')[-1]
                         if not doc.get("dni"):
-                            doc['dni'] = d['dni']
+                            doc['dni'] = d['dni'].split('-')[-2] + '-' + d['dni'].split('-')[-1]
 
                     doc["servers"] = get_servers(params, url + str(bid))
 
@@ -1716,188 +1722,6 @@ def storeOperator(input, first_pass=True, lastTotalCount=-1,
         print("Some unintented exception occured : %s" % ex)
 
 
-def storeCapella(input, first_pass=True, lastTotalCount=-1,
-                 claimedBuilds=None):
-    try:
-        jobDoc, view, already_scraped = input
-        bucket = view["bucket"]
-
-        claimedBuilds = claimedBuilds or {}
-        cluster = newClient()
-        client = cluster.bucket(bucket).default_collection()
-        greenboard_bucket = cluster.bucket(
-            "greenboard").default_collection()
-
-        doc = copy.deepcopy(jobDoc)
-        url = doc["url"]
-        res = getJS(url, {"depth": 0})
-
-        if res is None:
-            return
-
-        # do not process disabled jobs
-        if isDisabled(doc):
-            purgeDisabled(res, bucket)
-            return
-        buildHist = {}
-        if res.get("lastBuild") is not None:
-
-            bids = [b["number"] for b in res["builds"]]
-
-            if isExecutor(doc["name"]):
-                # include all jenkins history
-                bids = list(range(res["firstBuild"]["number"],
-                                  res["lastBuild"]["number"] + 1))
-                bids.reverse()
-            elif first_pass:
-                bids.reverse()  # bottom to top 1st pass
-
-            for bid in bids:
-                try:
-                    doc = copy.deepcopy(jobDoc)
-                    oldName = JOBS.get(doc["name"]) is not None
-                    if oldName and bid in JOBS[doc["name"]]:
-                        continue  # job already stored
-                    else:
-                        if oldName and first_pass == False:
-                            JOBS[doc["name"]].append(bid)
-
-                    doc["build_id"] = bid
-                    already_scraped_key = doc["url"] + str(doc["build_id"])
-                    if already_scraped_key in already_scraped:
-                        continue
-                    should_process = False
-
-                    for _ in range(2):
-                        res = getJS(url + str(bid), {"depth": 0})
-                        if not build_finished(res):
-                            break
-                        # retry after 10 seconds if jenkins race condition
-                        # where result and duration have not been updated to
-                        # reflect test results
-                        # e.g. result set to success, test result processed,
-                        # result updated, duration updated.
-                        if res["duration"] == 0:
-                            print("Sleeping for 10 seconds, potential Jenkins " \
-                                  "race condition detected...")
-                            time.sleep(10)
-                        else:
-                            should_process = True
-                            break
-
-                    if not should_process:
-                        continue
-
-                    doc["result"] = res["result"]
-                    doc["duration"] = res["duration"]
-                    doc["timestamp"] = res["timestamp"]
-
-                    actions = res["actions"]
-                    params = getAction(actions, "parameters")
-                    totalCount = getAction(actions, "totalCount") or 0
-                    failCount = getAction(actions, "failCount") or 0
-                    skipCount = getAction(actions, "skipCount") or 0
-                    should_analyse_logs = res["result"] != "SUCCESS"
-                    should_analyse_report = totalCount > 0 and res[
-                        "result"] != "SUCCESS"
-                    doc["claim"] = getClaimReason(actions,
-                                                  should_analyse_logs,
-                                                  should_analyse_report,
-                                                  url + str(bid))
-                    if totalCount == 0:
-                        if not isExecutor(doc["name"]):
-                            # skip non executor jobs where totalCount == 0
-                            # and no lastTotalCount
-                            if lastTotalCount == -1:
-                                continue
-                            else:
-                                # only set totalCount to lastTotalCount if
-                                # this is not an executor job
-                                # if this is an executor job, the last run
-                                # will probably be a completely
-                                # different set of tests so lastTotalCount is
-                                # irrelevant
-                                totalCount = lastTotalCount
-                                failCount = totalCount
-                    else:
-                        lastTotalCount = totalCount
-
-                    doc["failCount"] = failCount
-                    doc["totalCount"] = totalCount - skipCount
-                    doc["skipCount"] = 0
-                    os, component = getOsComponent(doc["name"], view)
-                    doc["component"] = component
-                    doc["os"] = getCapellaPlatform(doc["name"], view)
-                    if not doc['component']:
-                        continue
-                    doc['build'], doc['priority'] = \
-                        getBuildAndPriority(params, view['build_param_name'])
-                    if not doc.get("build"):
-                        continue
-
-                    doc["servers"] = []
-
-                    doc["claim"] = getClaimReason(actions, should_analyse_logs, should_analyse_report, url + str(bid))
-                    update_skip_count(greenboard_bucket, view, doc)
-
-                    histKey = doc["name"] + "-" + doc["build"]
-                    if not first_pass and histKey in buildHist:
-
-                        # print "REJECTED- doc already in build results: %s"
-                        # % doc
-                        # print buildHist
-
-                        # attempt to delete if this record has been stored in
-                        # couchbase
-
-                        try:
-                            oldKey = "%s-%s" % (doc["name"], doc["build_id"])
-                            oldKey = hashlib.md5(oldKey.encode()).hexdigest()
-                            client.remove(oldKey)
-                            # print "DELETED- %d:%s" % (bid, histKey)
-                        except:
-                            pass
-
-                        continue  # already have this build results
-
-                    key = "%s-%s" % (doc["name"], doc["build_id"])
-                    key = hashlib.md5(key.encode()).hexdigest()
-
-                    try:  # get custom claim if exists
-                        oldDoc = client.get(key)
-                        customClaim = oldDoc.value.get('customClaim')
-                    #  if customClaim is not None:
-                    #      doc["customClaim"] = customClaim
-                    except:
-                        pass  # ok, this is new doc
-                    retries = 5
-                    while retries > 0:
-                        try:
-                            client.upsert(key, doc)
-                            buildHist[histKey] = doc["build_id"]
-                            already_scraped.append(already_scraped_key)
-                            print("Collected %s" % already_scraped_key)
-                            break
-                        except Exception as e:
-                            print("set failed, couchbase down?: %s" % (HOST))
-                            print(e)
-                            retries -= 1
-                    if retries == 0:
-                        with open("errors.txt", 'a+') as error_file:
-                            error_file.writelines(doc.__str__())
-                    if doc.get("claimedBuilds"):  # rm custom claim
-                        del doc["claimedBuilds"]
-                except Exception as ex:
-                    print("Some unintented exception occured : %s" % ex)
-        if first_pass:
-            storeCapella((jobDoc, view, already_scraped),
-                         first_pass=False,
-                         lastTotalCount=lastTotalCount,
-                         claimedBuilds=claimedBuilds)
-    except Exception as ex:
-        print("Some unintented exception occured : %s" % ex)
-
-
 def storeBuild(run, name, view):
     cluster = newClient()
     client = cluster.bucket("server").default_collection()  # using server bucket (for now)
@@ -2215,8 +2039,7 @@ def pollcapella(view, already_scraped):
             if is_excluded(view, job):
                 print("skipping {} (excluded)".format(job["name"]))
                 continue
-            doc = {}
-            doc["name"] = job["name"]
+            doc = {"name": job["name"]}
             if job["name"] in JOBS:
                 continue
             JOBS[job["name"]] = []
@@ -2226,16 +2049,11 @@ def pollcapella(view, already_scraped):
             doc['os'] = platform
             doc["url"] = job["url"]
             doc["color"] = job.get("color")
-            # tJobs.append((doc, view, already_scraped))
-            store_cloud((doc, view, already_scraped))
-
-    # pool = multiprocessing.Pool()
-    # if view["job"] == "capella":
-    #     pool.map_async(storeCapella, tJobs)
-    # elif view["job"] == "cloud":
-    #     pool.map_async(store_cloud, tJobs)
-    # pool.close()
-    # pool.join()
+            tJobs.append((doc, view, already_scraped))
+    pool = multiprocessing.Pool()
+    pool.map(store_cloud, tJobs)
+    pool.close()
+    pool.join()
 
 
 def pool_serverless(view, already_scraped):
@@ -2250,8 +2068,7 @@ def pool_serverless(view, already_scraped):
             if is_excluded(view, job):
                 print("skipping {} (excluded)".format(job["name"]))
                 continue
-            doc = {}
-            doc["name"] = job["name"]
+            doc = {"name": job["name"]}
             if job["name"] in JOBS:
                 continue
             JOBS[job["name"]] = []
@@ -2261,13 +2078,11 @@ def pool_serverless(view, already_scraped):
             doc['os'] = platform
             doc["url"] = job["url"]
             doc["color"] = job.get("color")
-            # tJobs.append((doc, view, already_scraped))
-            store_serverless((doc, view, already_scraped))
-
-    # pool = multiprocessing.Pool()
-    # pool.map(store_serverless, tJobs)
-    # pool.close()
-    # pool.join()
+            tJobs.append((doc, view, already_scraped))
+    pool = multiprocessing.Pool()
+    pool.map(store_serverless, tJobs)
+    pool.close()
+    pool.join()
 
 
 def getOperatorBuild(params, url):
@@ -2399,9 +2214,9 @@ def newClient(password="password"):
 if __name__ == "__main__":
 
     # run build collect info thread
-    # tBuild = Thread(target=collectAllBuildInfo)
-    # tBuild.daemon = True
-    # tBuild.start()
+    tBuild = Thread(target=collectAllBuildInfo)
+    tBuild.daemon = True
+    tBuild.start()
 
     manager = multiprocessing.Manager()
     already_scraped = {}
